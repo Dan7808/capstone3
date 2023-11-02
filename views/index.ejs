@@ -11,23 +11,35 @@
 
 <body>
   <div class="container">
+    <section>
+      <div id="order">
+          <form name="ordine" id="ordine" method="post" action="/">
+                  <select name="ord" id="ord" onchange="document.ordine.submit();" >
+                      <option value="id" <%if (ordine=="id") {%> <%="selected"%> <%}%>>Ordina per Data</option>
+                      <option value="punteggio" <%if (ordine=="punteggio") {%> <%="selected"%> <%}%>>Ordina per Valutazione</option>
+                  </select>
+          </form>
+      </div>
+  </section>
     <h1>My Blog</h1>
-    <a id="newPostBtn" href="/new">New Post</a>
+    <form name="frmDel" id="frmDel" method="post" action="/">
+      <input type="hidden" name="id" id="id" value="">
+    </form>
     <ul id="postsList">
       <% posts.forEach(post=> { %>
         <li>
           <h2>
-            <%=post.title%>
+            <%=post.titolo%>
           </h2>
+          <img src="https://covers.openlibrary.org/b/id/<%= post.id %>-M.jpg">
           <small>
-            <%=post.date %>
+            <%=post.punteggio %>
           </small>
           <p>
-            <%=post.content%>
+            <%=post.testo%>
           </p>
-          <small>By: <%=post.author%> </small>
           <a class="edit" href="/edit/<%= post.id %>">Edit</a>
-          <a class="delete" href="/api/posts/delete/<%= post.id %>">Delete</a>
+          <a class="delete" href="#" onclick="document.getElementById('id').value=<%= post.id %>;frmDel.submit()">Delete</a>
         </li>
         <% }); %>
     </ul>

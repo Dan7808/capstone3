@@ -1,38 +1,23 @@
 import express from "express";
 import bodyParser from "body-parser";
+import pg from "pg";
 
 const app = express();
 const port = 3000;
 
-// In-memory data store
-let posts = [
-  {
-    id: 1,
-    title: "The Rise of Decentralized Finance",
-    content:
-      "Decentralized Finance (DeFi) is an emerging and rapidly evolving field in the blockchain industry. It refers to the shift from traditional, centralized financial systems to peer-to-peer finance enabled by decentralized technologies built on Ethereum and other blockchains. With the promise of reduced dependency on the traditional banking sector, DeFi platforms offer a wide range of services, from lending and borrowing to insurance and trading.",
-    author: "Alex Thompson",
-    date: "2023-08-01T10:00:00Z",
-  },
-  {
-    id: 2,
-    title: "The Impact of Artificial Intelligence on Modern Businesses",
-    content:
-      "Artificial Intelligence (AI) is no longer a concept of the future. It's very much a part of our present, reshaping industries and enhancing the capabilities of existing systems. From automating routine tasks to offering intelligent insights, AI is proving to be a boon for businesses. With advancements in machine learning and deep learning, businesses can now address previously insurmountable problems and tap into new opportunities.",
-    author: "Mia Williams",
-    date: "2023-08-05T14:30:00Z",
-  },
-  {
-    id: 3,
-    title: "Sustainable Living: Tips for an Eco-Friendly Lifestyle",
-    content:
-      "Sustainability is more than just a buzzword; it's a way of life. As the effects of climate change become more pronounced, there's a growing realization about the need to live sustainably. From reducing waste and conserving energy to supporting eco-friendly products, there are numerous ways we can make our daily lives more environmentally friendly. This post will explore practical tips and habits that can make a significant difference.",
-    author: "Samuel Green",
-    date: "2023-08-10T09:15:00Z",
-  },
-];
 
-let lastId = 3; 
+const db = new pg.Client({
+  user: "postgres",
+  host: "localhost",
+  database: "capstone3",
+  password: "0162",
+  port: 5432,
+});
+db.connect();
+
+app.use(express.static("public"));
+
+
 
 // Middleware
 app.use(bodyParser.json());
@@ -40,69 +25,116 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 //Write your code here//
 
-//CHALLENGE 1: GET All posts
-app.get("/posts",(req,res)=>{
-  res.json(posts);
-})
+app.get("/", async (req, res) => {
 
-
-//CHALLENGE 2: GET a specific post by id
-app.get("/posts/:id",(req, res)=>{
-  
-  const id = parseInt(req.params.id);
-//console.log(id);
-    const cerca = posts.find(post => post.id === id)
-    console.log(cerca); 
-    res.json(cerca)
-
-
-})
-
-
-//CHALLENGE 3: POST a new post
-app.post("/posts",(req, res)=>{
-  var currentdate = new Date(); 
-  const newJoke = {
-    id: posts.length+1,
-    title:req.body["title"],
-    author:req.body["author"],
-    content:req.body["content"],
-    date: currentdate,
+  let posts = await db.query("SELECT libri.id, titolo, testo, punteggio FROM libri INNER JOIN recensione as rec ON libri.id = rec.id_libro order by libri.id desc");
+//console.log(posts.rows);
+  try {
+    res.render("index.ejs", {
+       posts: posts.rows ,
+      ordine : "id",});
+  } catch (error) {
+    res.status(500).json({ 
+      message: "Error fetching posts",
+     });
   }
-  posts.push(newJoke);
-  //console.log(posts.data);
-  res.json(newJoke);
-})
+});
+app.post("/", async (req, res) => {
+  let ordine = req.body["ord"];
 
-
-
-//CHALLENGE 4: PATCH a post when you just want to update one parameter
-app.patch("/posts/:id", (req, res) => {
-  const post = posts.find((p) => p.id === parseInt(req.params.id));
-  if (!post) return res.status(404).json({ message: "Post not found" });
-
-  if (req.body.title) post.title = req.body.title;
-  if (req.body.content) post.content = req.body.content;
-  if (req.body.author) post.author = req.body.author;
-
-  res.json(post);
+  let posts = await db.query("SELECT libri.id, titolo, testo, punteggio FROM libri INNER JOIN recensione as rec ON libri.id = rec.id_libro order by "+ordine+" desc");
+  try {
+    res.render("index.ejs", {
+       posts: posts.rows,
+      ordine : ordine, });
+  } catch (error) {
+    res.status(500).json({
+       message: "Error fetching posts",
+       
+      });
+  }
 });
 
 
+// Route to render the edit page
+app.get("/new", (req, res) => {
+  res.render("modify.ejs", { heading: "Nuovo inserimento", submit: "Aggiungi" });
+});
+
+app.post("/new", async (req, res) => {
+  try {
+   let titolo = req.body["title"];
+   let testo = req.body["content"];
+   let punti = req.body["punti"];
+
+    const resultInsert =  await db.query("INSERT INTO libri (titolo) VALUES ($1)  RETURNING id",
+    [titolo]
+    );
+    //console.log(resultInsert.rows[0].id);
+    let lastId =  resultInsert.rows[0].id;
+    
+    
+    await db.query("INSERT INTO recensione (testo, punteggio, id_libro) VALUES ($1,$2,$3)",
+    [testo, punti, lastId]
+    ); 
+   
+    res.redirect("/");
+  } catch (error) {
+    res.status(500).json({ message: "Error creating post" });
+  }
+});
+
+app.get("/edit/:id", async (req, res) => {
+  try {
+    //console.log(req.params.id);
+    let posts = await db.query("SELECT libri.id, titolo, testo, punteggio FROM libri INNER JOIN recensione as rec ON libri.id = rec.id_libro where libri.id = $1",
+    [req.params.id]
+    );
+//console.log(posts.rows);
+  ;
+    res.render("modify.ejs", { 
+      heading: "Modifica", 
+      submit: "Aggiorna", 
+      dettaglio:  posts.rows[0] });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ message: "Error fetching post" });
+  }
+});
+
+app.post("/edit/:id", async (req, res) => {
+  try {
+    let titolo = req.body["title"];
+    let id = req.params.id;
+    let testo = req.body["content"];
+    let punti = req.body["punti"];
+
+
+    db.query("UPDATE libri SET titolo = $1 WHERE id = $2",
+    [titolo,id]
+    )
+    db.query("UPDATE recensione SET testo = $1, punteggio = $2 WHERE id_libro = $3",
+    [testo,punti,id]
+    )
+
+    res.redirect("/");
+    
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching post" });
+  }
+});
 
 
 //CHALLENGE 5: DELETE a specific post by providing the post id.
-app.delete("/posts/:id", (req, res) => {
-  const id = parseInt(req.params.id);
-  const searchIndex = posts.findIndex((joke) => joke.id === id);
-  if (searchIndex > -1) {
-    posts.splice(searchIndex, 1);
-    res.sendStatus(200);
-  } else {
-    res
-      .status(404)
-      .json({ error: `Joke with id: ${id} not found. No jokes were deleted.` });
-  }
+app.post("/", (req, res) => {
+  const id = parseInt(req.body.id);
+
+  db.query("DELETE FROM recensione WHERE id_libro = $1",
+  [id])
+  db.query("DELETE FROM libri WHERE id = $1",
+  [id])
+
+  res.redirect("/");
 });
 
 
